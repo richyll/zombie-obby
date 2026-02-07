@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zombie Obby - Hotdog Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #000; touch-action: none; }
+        #ui-top {
+            position: absolute; top: 10px; left: 10px; color: white;
+            text-shadow: 2px 2px 2px #000; pointer-events: none; z-index: 10;
+        }
+        #hotdog-counter {
+            position: absolute; bottom: 20px; left: 20px; color: #ffcc00;
+            font-size: 1.8rem; font-weight: bold; display: flex; align-items: center;
+            text-shadow: 2px 2px 4px #000; z-index: 10; pointer-events: none;
+        }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 24px; height: 24px;
+            border: 2px solid rgba(0, 255, 0, 0.7); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; transition: transform 0.1s;
+        }
+        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: lime; border-radius: 50%; transform: translate(-50%, -50%); }
+        
+        #weapon-ui {
+            position: absolute; bottom: 20px; right: 20px; color: white;
+            background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 10px; text-align: right;
+            z-index: 10; pointer-events: none;
+        }
+
+        /* Mobilkontroller */
+        #mobile-controls {
+            position: absolute; bottom: 30px; left: 20px; width: calc(100% - 40px);
+            height: 250px; display: none; justify-content: space-between; align-items: flex-end; pointer-events: none;
+            z-index: 20;
+        }
+        .joystick-container { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; pointer-events: auto; position: relative; margin-bottom: 20px; }
+        .joystick-knob { width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%; position: absolute; top: 35px; left: 35px; }
+        
+        .action-buttons { 
+            display: grid; 
+            grid-template-columns: repeat(2, 80px); 
+            grid-template-rows: repeat(3, 80px);
+            gap: 10px; 
+            pointer-events: auto; 
+        }
+        .m-btn { 
+            width: 80px; height: 80px; 
+            background: rgba(255,255,255,0.15); 
+            border-radius: 50%; 
+            display: flex; justify-content: center; align-items: center; 
+            color: white; font-weight: bold; font-size: 12px; 
+            user-select: none; border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+        }
+        .m-btn:active { background: rgba(255,255,255,0.4); }
+
+        #game-over, #pause-menu, #win-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.8); color: white; z-index: 100; text-align: center;
+        }
+        .btn { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border: none; border-radius: 5px; margin-top: 10px; background: #444; color: white; min-width: 200px; }
+        .btn:hover { background: #666; }
+        .btn-primary { background: #ff3300; }
+        
+        @media (pointer: coarse) { #mobile-controls { display: flex; } }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <div style="font-size: 1.2rem;">Hälsa: <span id="hp-val">100</span>%</div>
+        <div>Nivå: <span id="lvl-val">1</span>/10</div>
+    </div>
+
+    <div id="hotdog-counter">🌭 <span id="hd-val">0</span></div>
+
+    <div id="crosshair"></div>
+
+    <div id="weapon-ui">
+        <div id="w-name" style="font-size: 1.2rem;">Glock 19</div>
+        <div style="font-size: 0.8rem; color: #aaa;">[Q] Växla | [E] Plocka | [F] Ät</div>
+    </div>
+
+    <div id="mobile-controls">
+        <div class="joystick-container" id="joy-move">
+            <div class="joystick-knob" id="knob-move"></div>
+        </div>
+        <div class="action-buttons">
+            <div class="m-btn" id="m-jump" style="background: rgba(0, 150, 255, 0.4);">HOPP</div>
+            <div class="m-btn" id="m-fire" style="background: rgba(255, 0, 0, 0.4);">SKJUT</div>
+            <div class="m-btn" id="m-pickup" style="background: rgba(255, 200, 0, 0.2);">PLOCKA</div>
+            <div class="m-btn" id="m-eat" style="background: rgba(0, 255, 100, 0.2);">ÄT 🌭</div>
+            <div class="m-btn" id="m-swap" style="grid-column: span 2; width: 170px; border-radius: 40px;">VÄXLA VAPEN</div>
+        </div>
+    </div>
+
+    <div id="game-over">
+        <h1 style="color: #ff3300;">DU DOG</h1>
+        <p id="death-msg" style="margin-bottom: 20px;"></p>
+        <button class="btn btn-primary" onclick="restartLevel()">FÖRSÖK IGEN (Nivå <span id="death-lvl-val">1</span>)</button>
+        <button class="btn" onclick="location.reload()">STARTA OM HELT</button>
+    </div>
+
+    <div id="win-screen">
+        <h1 style="color: #00ff00;">GRATTIS!</h1>
+        <p>Du överlevde alla 10 nivåer och samlade massor av korv!</p>
+        <button class="btn" onclick="location.reload()">SPELA IGEN</button>
+    </div>
+
+    <div id="pause-menu">
+        <h1>PAUS</h1>
+        <button class="btn" onclick="togglePause()">FORTSÄTT</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- Sound System ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const sounds = {
+            shoot: () => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            },
+            knife: () => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            },
+            levelUp: () => {
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                notes.forEach((freq, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.1);
+                    gain.gain.setValueAtTime(0, audioCtx.currentTime + i * 0.1);
+                    gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + i * 0.1 + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + i * 0.1 + 0.2);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + i * 0.1);
+                    osc.stop(audioCtx.currentTime + i * 0.1 + 0.2);
+                });
+            },
+            hit: () => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            },
+            pickup: () => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            }
+        };
+
+        // --- State ---
+        let level = 1;
+        const MAX_LEVELS = 10;
+        let health = 100, hotdogs = 0;
+        let isPaused = false, isGameOver = false, isAiming = false;
+        let activeWeapon = 'glock';
+        const keys = {};
+        
+        // Mobile-specific state
+        let moveJoystickData = { x: 0, y: 0 };
+        let lookTouchId = null;
+        let lastLookTouch = { x: 0, y: 0 };
+
+        // --- Three.js Init ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020205);
+        scene.fog = new THREE.Fog(0x020205, 5, 60);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(light);
+        const pLight = new THREE.PointLight(0xffffff, 0.8, 20);
+        camera.add(pLight);
+        scene.add(camera);
+
+        // --- Player ---
+        const player = new THREE.Group();
+        scene.add(player);
+        player.add(camera);
+        camera.position.y = 1.6;
+
+        const weaponPivot = new THREE.Group();
+        camera.add(weaponPivot);
+        const weaponWiggle = { x:0, y:0, t:0 };
+
+        // --- Weapons ---
+        const glock = new THREE.Group();
+        const gBody = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.25), new THREE.MeshPhongMaterial({color: 0x222222}));
+        const gSlide = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.25), new THREE.MeshPhongMaterial({color: 0x333333}));
+        gSlide.position.y = 0.06;
+        glock.add(gBody, gSlide);
+        
+        const knife = new THREE.Group();
+        const kBlade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.25, 0.05), new THREE.MeshPhongMaterial({color: 0xcccccc, shininess: 100}));
+        kBlade.position.y = 0.15;
+        const kHandle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 0.03), new THREE.MeshPhongMaterial({color: 0x332211}));
+        knife.add(kBlade, kHandle);
+        knife.rotation.x = Math.PI/2;
+        knife.visible = false;
+
+        weaponPivot.add(glock, knife);
+        const weaponPosIdle = new THREE.Vector3(0.3, -0.3, -0.5);
+        const weaponPosAim = new THREE.Vector3(0, -0.2, -0.35);
+
+        let platforms = [], zombies = [], items = [], bullets = [];
+
+        function createHotdog(x, y, z) {
+            const group = new THREE.Group();
+            const breadMat = new THREE.MeshPhongMaterial({color: 0xd2b48c});
+            const sausageMat = new THREE.MeshPhongMaterial({color: 0x8b0000});
+            const breadBody = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2, 8), breadMat);
+            const breadEnd1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), breadMat);
+            const breadEnd2 = breadEnd1.clone();
+            breadEnd1.position.y = 0.1; breadEnd2.position.y = -0.1;
+            const breadGroup = new THREE.Group();
+            breadGroup.add(breadBody, breadEnd1, breadEnd2);
+            breadGroup.rotation.z = Math.PI/2;
+            const sausageBody = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.25, 8), sausageMat);
+            const sausageEnd1 = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), sausageMat);
+            const sausageEnd2 = sausageEnd1.clone();
+            sausageEnd1.position.y = 0.125; sausageEnd2.position.y = -0.125;
+            const sausageGroup = new THREE.Group();
+            sausageGroup.add(sausageBody, sausageEnd1, sausageEnd2);
+            sausageGroup.rotation.z = Math.PI/2;
+            group.add(breadGroup, sausageGroup);
+            group.position.set(x, y + 0.3, z);
+            scene.add(group);
+            items.push({ mesh: group, type: 'hotdog' });
+        }
+
+        function createZombie(x, y, z, plat) {
+            const g = new THREE.Group();
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshPhongMaterial({color: 0x55aa55}));
+            head.position.y = 1.6;
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.25), new THREE.MeshPhongMaterial({color: 0x226622}));
+            body.position.y = 1.0;
+            const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), new THREE.MeshPhongMaterial({color: 0x55aa55}));
+            armL.position.set(-0.35, 1.2, -0.2); armL.rotation.x = -Math.PI/2;
+            const armR = armL.clone(); armR.position.x = 0.35;
+            g.add(head, body, armL, armR);
+            g.position.set(x, y, z);
+            scene.add(g);
+            return { mesh: g, hp: 3 + (level/4), speed: 0.02 + (level*0.002), platform: plat };
+        }
+
+        function generateLevel() {
+            platforms.forEach(p => scene.remove(p));
+            zombies.forEach(z => scene.remove(z.mesh));
+            items.forEach(i => scene.remove(i.mesh));
+            bullets.forEach(b => scene.remove(b.mesh));
+            platforms = []; zombies = []; items = []; bullets = [];
+            
+            let lastPos = new THREE.Vector3(0, -0.5, 0);
+            const startPlat = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 8), new THREE.MeshPhongMaterial({color: 0x333333}));
+            startPlat.position.copy(lastPos);
+            scene.add(startPlat);
+            platforms.push(startPlat);
+
+            const numPlatforms = 8 + level;
+            for(let i=0; i < numPlatforms; i++) {
+                const w = 3 + Math.random()*3, d = 3 + Math.random()*3;
+                const p = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d), new THREE.MeshPhongMaterial({color: 0x444444}));
+                lastPos.z -= 6 + Math.random()*3;
+                lastPos.x += (Math.random()-0.5)*6;
+                lastPos.y += (Math.random()-0.5)*1.5;
+                p.position.copy(lastPos);
+                scene.add(p);
+                platforms.push(p);
+
+                if(Math.random() < 0.3) {
+                    const lavaSizeW = w * 0.4;
+                    const lavaSizeD = d * 0.4;
+                    const lava = new THREE.Mesh(new THREE.PlaneGeometry(lavaSizeW, lavaSizeD), new THREE.MeshBasicMaterial({color: 0xff1100, side: THREE.DoubleSide}));
+                    lava.rotation.x = -Math.PI/2; 
+                    lava.position.y = 0.26;
+                    p.add(lava); 
+                    p.userData.lava = true;
+                    p.userData.lavaBounds = { w: lavaSizeW/2, d: lavaSizeD/2 };
+                }
+                
+                if(i > 1 && Math.random() < 0.4) {
+                    zombies.push(createZombie(lastPos.x, lastPos.y + 0.25, lastPos.z, p));
+                }
+            }
+
+            const goal = new THREE.Mesh(new THREE.BoxGeometry(6, 1, 6), new THREE.MeshPhongMaterial({color: 0x00ff00, emissive: 0x003300}));
+            lastPos.z -= 8;
+            goal.position.copy(lastPos);
+            goal.userData.goal = true;
+            scene.add(goal);
+            platforms.push(goal);
+
+            player.position.set(0, 2, 0);
+            player.rotation.set(0, 0, 0);
+            camera.rotation.set(0, 0, 0);
+            velocityY = 0;
+            document.getElementById('lvl-val').innerText = level;
+        }
+
+        // --- INPUT HANDLING ---
+
+        // Keyboard
+        window.addEventListener('keydown', e => { 
+            keys[e.code] = true; 
+            if(e.code === 'KeyQ') swapWeapon();
+            if(e.code === 'KeyP') togglePause();
+            if(e.code === 'KeyE') pickupHotdog();
+            if(e.code === 'KeyF') eatHotdog();
+        });
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Mouse (Desktop)
+        document.body.addEventListener('mousedown', (e) => {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            if(!isPaused && !isGameOver && !document.pointerLockElement && window.innerWidth > 768) {
+                document.body.requestPointerLock();
+            } else if(document.pointerLockElement) {
+                isAiming = true; fire();
+            }
+        });
+        window.addEventListener('mouseup', () => isAiming = false);
+
+        document.addEventListener('mousemove', e => {
+            if(document.pointerLockElement) {
+                const sense = isAiming ? 0.001 : 0.002;
+                player.rotation.y -= e.movementX * sense;
+                camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - e.movementY * sense));
+            }
+        });
+
+        // Touch (Mobile)
+        const joyMove = document.getElementById('joy-move');
+        const knobMove = document.getElementById('knob-move');
+        
+        joyMove.addEventListener('touchstart', e => { 
+            e.preventDefault(); 
+            if(audioCtx.state === 'suspended') audioCtx.resume(); 
+        }, {passive: false});
+
+        joyMove.addEventListener('touchmove', e => {
+            e.preventDefault();
+            const r = 60, rect = joyMove.getBoundingClientRect();
+            const touch = e.touches[0];
+            const tx = touch.clientX - (rect.left + r);
+            const ty = touch.clientY - (rect.top + r);
+            const dist = Math.min(r, Math.sqrt(tx*tx + ty*ty));
+            const angle = Math.atan2(ty, tx);
+            moveJoystickData.x = (Math.cos(angle) * dist) / r;
+            moveJoystickData.y = (Math.sin(angle) * dist) / r;
+            knobMove.style.transform = `translate(${moveJoystickData.x*40}px, ${moveJoystickData.y*40}px)`;
+        }, {passive: false});
+
+        joyMove.addEventListener('touchend', () => { 
+            moveJoystickData = {x:0, y:0}; 
+            knobMove.style.transform = `translate(0,0)`; 
+        });
+
+        // Touch Look (Right side of screen)
+        window.addEventListener('touchstart', e => {
+            if(isPaused || isGameOver) return;
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if(t.clientX > window.innerWidth / 2 && !lookTouchId) {
+                    if(t.target.classList.contains('m-btn')) continue;
+                    lookTouchId = t.identifier;
+                    lastLookTouch = { x: t.clientX, y: t.clientY };
+                }
+            }
+        });
+
+        window.addEventListener('touchmove', e => {
+            if(lookTouchId === null) return;
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if(t.identifier === lookTouchId) {
+                    const dx = t.clientX - lastLookTouch.x;
+                    const dy = t.clientY - lastLookTouch.y;
+                    const sense = isAiming ? 0.004 : 0.007;
+                    player.rotation.y -= dx * sense;
+                    camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x - dy * sense));
+                    lastLookTouch = { x: t.clientX, y: t.clientY };
+                }
+            }
+        }, {passive: false});
+
+        window.addEventListener('touchend', e => {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if(e.changedTouches[i].identifier === lookTouchId) {
+                    lookTouchId = null;
+                }
+            }
+        });
+
+        // Action Buttons
+        document.getElementById('m-jump').addEventListener('touchstart', (e) => { e.stopPropagation(); keys['Space'] = true; });
+        document.getElementById('m-jump').addEventListener('touchend', () => keys['Space'] = false);
+        document.getElementById('m-fire').addEventListener('touchstart', (e) => { e.stopPropagation(); isAiming = true; fire(); });
+        document.getElementById('m-fire').addEventListener('touchend', () => isAiming = false);
+        document.getElementById('m-swap').addEventListener('touchstart', (e) => { e.stopPropagation(); swapWeapon(); });
+        document.getElementById('m-eat').addEventListener('touchstart', (e) => { e.stopPropagation(); eatHotdog(); });
+        document.getElementById('m-pickup').addEventListener('touchstart', (e) => { e.stopPropagation(); pickupHotdog(); });
+
+        // --- Logic Methods ---
+        function swapWeapon() {
+            activeWeapon = activeWeapon === 'glock' ? 'knife' : 'glock';
+            glock.visible = activeWeapon === 'glock';
+            knife.visible = activeWeapon === 'knife';
+            document.getElementById('w-name').innerText = activeWeapon === 'glock' ? 'Glock 19' : 'Kastkniv';
+        }
+
+        function createKnifeProjectile() {
+            const group = new THREE.Group();
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.3, 0.06), new THREE.MeshPhongMaterial({color: 0xcccccc}));
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.15, 0.04), new THREE.MeshPhongMaterial({color: 0x332211}));
+            handle.position.y = -0.15;
+            group.add(blade, handle);
+            return group;
+        }
+
+        function fire() {
+            let projectile;
+            const camQuat = new THREE.Quaternion();
+            camera.getWorldQuaternion(camQuat);
+            let dir = new THREE.Vector3(0,0,-1).applyQuaternion(camQuat);
+            
+            if(activeWeapon === 'glock') {
+                sounds.shoot();
+                projectile = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({color: 0xffff00}));
+            } else {
+                sounds.knife();
+                projectile = createKnifeProjectile();
+                projectile.quaternion.copy(camQuat);
+                projectile.rotation.x += Math.PI/2;
+            }
+
+            projectile.position.copy(camera.getWorldPosition(new THREE.Vector3()));
+            scene.add(projectile);
+            
+            bullets.push({ 
+                mesh: projectile, 
+                dir, 
+                speed: activeWeapon === 'glock' ? 1.2 : 0.65, 
+                life: 100, 
+                dmg: activeWeapon === 'glock' ? 1 : 4,
+                isKnife: activeWeapon === 'knife'
+            });
+        }
+
+        function pickupHotdog() {
+            let found = false;
+            for(let i=items.length-1; i>=0; i--) {
+                if(player.position.distanceTo(items[i].mesh.position) < 2.5) {
+                    scene.remove(items[i].mesh); 
+                    items.splice(i, 1); 
+                    hotdogs++; 
+                    found = true;
+                }
+            }
+            if(found) {
+                sounds.pickup();
+                updateUI();
+            }
+        }
+
+        function eatHotdog() {
+            if(hotdogs > 0 && health < 100) {
+                hotdogs--; health = Math.min(100, health + 30); updateUI();
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('hd-val').innerText = hotdogs;
+            document.getElementById('hp-val').innerText = Math.ceil(health);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pause-menu').style.display = isPaused ? 'flex' : 'none';
+        }
+
+        function die(msg) {
+            isGameOver = true;
+            document.getElementById('death-msg').innerText = msg;
+            document.getElementById('death-lvl-val').innerText = level;
+            document.getElementById('game-over').style.display = 'flex';
+            if(document.pointerLockElement) document.exitPointerLock();
+        }
+
+        function restartLevel() {
+            health = 100;
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            updateUI();
+            generateLevel();
+        }
+
+        function winGame() {
+            isGameOver = true;
+            sounds.levelUp();
+            document.getElementById('win-screen').style.display = 'flex';
+            if(document.pointerLockElement) document.exitPointerLock();
+        }
+
+        // --- Game Loop ---
+        let velocityY = 0, canJump = false;
+        function animate() {
+            requestAnimationFrame(animate);
+            if(isPaused || isGameOver) return;
+
+            const speed = isAiming ? 0.04 : 0.12;
+            const moveVec = new THREE.Vector3();
+            if(keys['KeyW']) moveVec.z -= 1; if(keys['KeyS']) moveVec.z += 1;
+            if(keys['KeyA']) moveVec.x -= 1; if(keys['KeyD']) moveVec.x += 1;
+            
+            if(Math.abs(moveJoystickData.x) > 0.01 || Math.abs(moveJoystickData.y) > 0.01) {
+                moveVec.x = moveJoystickData.x; moveVec.z = moveJoystickData.y;
+            }
+
+            if(moveVec.length() > 0) {
+                player.position.add(moveVec.normalize().applyQuaternion(player.quaternion).multiplyScalar(speed));
+                weaponWiggle.t += 0.15;
+                weaponWiggle.x = Math.sin(weaponWiggle.t) * 0.02;
+                weaponWiggle.y = Math.cos(weaponWiggle.t * 2) * 0.02;
+            }
+
+            // Visual check for pickup button
+            let nearHotdog = false;
+            items.forEach(it => { if(player.position.distanceTo(it.mesh.position) < 2.5) nearHotdog = true; });
+            const pickupBtn = document.getElementById('m-pickup');
+            if(nearHotdog) {
+                pickupBtn.style.background = "rgba(255, 200, 0, 0.6)";
+                pickupBtn.style.borderColor = "white";
+            } else {
+                pickupBtn.style.background = "rgba(255, 200, 0, 0.2)";
+                pickupBtn.style.borderColor = "rgba(255,255,255,0.2)";
+            }
+
+            velocityY -= 0.01;
+            player.position.y += velocityY;
+
+            platforms.forEach(p => {
+                const dx = Math.abs(player.position.x - p.position.x);
+                const dz = Math.abs(player.position.z - p.position.z);
+                const w = p.geometry.parameters.width / 2;
+                const d = p.geometry.parameters.depth / 2;
+                if(dx < w + 0.3 && dz < d + 0.3) {
+                    const top = p.position.y + 0.25;
+                    if(player.position.y <= top + 1.2 && player.position.y >= top && velocityY <= 0) {
+                        player.position.y = top + 1.1;
+                        velocityY = 0; canJump = true;
+                        if(p.userData.lava) {
+                            const lb = p.userData.lavaBounds;
+                            if(dx < lb.w + 0.2 && dz < lb.d + 0.2) die("Lavan grillade dig!");
+                        }
+                        if(p.userData.goal) { 
+                            if(level < MAX_LEVELS) {
+                                level++; sounds.levelUp(); generateLevel(); 
+                            } else { winGame(); }
+                        }
+                    }
+                }
+            });
+
+            if(keys['Space'] && canJump) { velocityY = 0.22; canJump = false; }
+            if(player.position.y < -15) die("Du föll ner i mörkret!");
+
+            const targetPos = isAiming ? weaponPosAim : weaponPosIdle;
+            weaponPivot.position.lerp(targetPos, 0.15);
+            weaponPivot.position.x += weaponWiggle.x;
+            weaponPivot.position.y += weaponWiggle.y;
+            camera.fov = THREE.MathUtils.lerp(camera.fov, isAiming ? 40 : 75, 0.1);
+            camera.updateProjectionMatrix();
+
+            for(let i=bullets.length-1; i>=0; i--) {
+                const b = bullets[i];
+                b.mesh.position.add(b.dir.clone().multiplyScalar(b.speed));
+                if(b.isKnife) b.mesh.rotation.x += 0.4;
+
+                b.life--;
+                zombies.forEach((z, zi) => {
+                    if(b.mesh.position.distanceTo(z.mesh.position.clone().add(new THREE.Vector3(0,1,0))) < 0.8) {
+                        sounds.hit(); z.hp -= b.dmg; b.life = 0;
+                        if(z.hp <= 0) {
+                            createHotdog(z.mesh.position.x, z.mesh.position.y, z.mesh.position.z);
+                            scene.remove(z.mesh); zombies.splice(zi, 1);
+                        }
+                    }
+                });
+                if(b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
+            }
+
+            zombies.forEach(z => {
+                const d = player.position.distanceTo(z.mesh.position);
+                if(d < 15) {
+                    z.mesh.lookAt(player.position.x, z.mesh.position.y, player.position.z);
+                    z.mesh.position.add(player.position.clone().sub(z.mesh.position).normalize().multiplyScalar(z.speed));
+                }
+                if(d < 1.5) { 
+                    health -= 0.5; if(Math.random() < 0.05) sounds.hit(); updateUI(); 
+                    if(health <= 0) die("Zombierna tog dig!"); 
+                }
+            });
+
+            items.forEach(it => { it.mesh.rotation.y += 0.05; });
+            renderer.render(scene, camera);
+        }
+
+        generateLevel();
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
